@@ -8,6 +8,7 @@ namespace Joomla\Database\Tests\Sqlsrv;
 
 use Joomla\Database\DatabaseDriver;
 use Joomla\Database\Exception\ExecutionFailureException;
+use Joomla\Database\Sqlsrv\SqlsrvStatement;
 use Joomla\Test\DatabaseTestCase;
 
 class SqlsrvPreparedStatementTest extends DatabaseTestCase
@@ -65,6 +66,63 @@ class SqlsrvPreparedStatementTest extends DatabaseTestCase
         foreach (static::$connection->getTableList() as $table) {
             static::$connection->dropTable($table);
         }
+    }
+
+    /**
+     * Make sure the mysqli driver correctly maps named query parameters appearing more than once.
+     */
+    public function testPrepareParameterKeyMappingWithDuplicateKey()
+    {
+        $statement = 'SELECT * FROM dbtest WHERE title LIKE :search OR description LIKE :search';
+        $sqlsrvStatement = new SqlsrvStatement(static::$connection->getConnection(), $statement);
+        $rawQuery = $sqlsrvStatement->prepareParameterKeyMapping($statement);
+
+        $this->assertEquals(
+            "SELECT * FROM dbtest WHERE title LIKE ? OR description LIKE ?",
+            $rawQuery
+        );
+
+        $refObject = new \ReflectionObject($sqlsrvStatement);
+        $refMapping = $refObject->getProperty('parameterKeyMapping');
+        /** @noinspection PhpExpressionResultUnusedInspection */
+        $refMapping->setAccessible(true);
+        $parameterKeyMapping = $refMapping->getValue($sqlsrvStatement);
+
+        $this->assertEquals(
+            [
+                ':search' => [0, 1],
+            ],
+            $parameterKeyMapping
+        );
+    }
+
+    /**
+     * Regression test to ensure mapping query parameters appearing once didn't break.
+     */
+    public function testPrepareParameterKeyMappingWithSingleKey()
+    {
+        $statement = 'SELECT * FROM dbtest WHERE title LIKE :search OR description LIKE :search2';
+        $sqlsrvStatement = new SqlsrvStatement(static::$connection->getConnection(), $statement);
+        $rawQuery = $sqlsrvStatement->prepareParameterKeyMapping($statement);
+
+        $this->assertEquals(
+            "SELECT * FROM dbtest WHERE title LIKE ? OR description LIKE ?",
+            $rawQuery
+        );
+
+        $refObject = new \ReflectionObject($sqlsrvStatement);
+        $refMapping = $refObject->getProperty('parameterKeyMapping');
+        /** @noinspection PhpExpressionResultUnusedInspection */
+        $refMapping->setAccessible(true);
+        $parameterKeyMapping = $refMapping->getValue($sqlsrvStatement);
+
+        $this->assertEquals(
+            [
+                ':search' => 0,
+                ':search2' => 1,
+            ],
+            $parameterKeyMapping
+        );
     }
 
     /**
